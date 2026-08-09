@@ -2,3 +2,8 @@
 members = [
     "packages/*",
 ]
+
+[dependency-groups]
+dev = [
+    "claude-agent-sdk>=0.2.134",
+]
