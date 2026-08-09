@@ -10,6 +10,8 @@ async def main():
         options=ClaudeAgentOptions(
             allowed_tools=["Read", "Edit", "Bash"],
             permission_mode="plan",
+            model="claude-sonnet-5",
+            max_budget_usd=2,
         ),
     ):
         # Print human-readable output
