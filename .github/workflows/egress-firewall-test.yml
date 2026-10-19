@@ -27,3 +27,30 @@ jobs:
             echo "::error::example.com was reachable; egress firewall is not enforcing"
             exit 1
           fi
+
+  blocked-ip:
+    name: IP literal connections are denied
+    runs-on: ubuntu-24.04-firewall
+    steps:
+      # --insecure so a failure can only come from the firewall or the network,
+      # not from a certificate mismatch on an IP literal.
+      - name: IPv4 literal is blocked (HTTPS and HTTP)
+        run: |
+          for url in https://1.1.1.1 http://1.1.1.1; do
+            if curl --ipv4 --fail --silent --insecure --max-time 20 --output /dev/null "$url"; then
+              echo "::error::$url was reachable; IP literal egress is not blocked"
+              exit 1
+            fi
+          done
+      - name: IPv6 literal is blocked (HTTPS and HTTP)
+        run: |
+          if ! ip -6 route get 2606:4700:4700::1111 > /dev/null 2>&1; then
+            echo "::warning::Runner has no IPv6 route; skipping, a failure here would prove nothing"
+            exit 0
+          fi
+          for url in "https://[2606:4700:4700::1111]" "http://[2606:4700:4700::1111]"; do
+            if curl --ipv6 --fail --silent --insecure --max-time 20 --output /dev/null "$url"; then
+              echo "::error::$url was reachable; IPv6 literal egress is not blocked"
+              exit 1
+            fi
+          done
