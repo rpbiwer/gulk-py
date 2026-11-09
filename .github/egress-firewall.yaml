@@ -17,3 +17,4 @@ allow:
   #
   #
   # [head marker goes directly below this line]
+  - pypi.org
