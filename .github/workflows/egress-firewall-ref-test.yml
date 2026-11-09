@@ -1,0 +1,38 @@
+name: Egress firewall ref test
+
+on:
+  pull_request:
+  pull_request_review:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe which policy was loaded (${{ github.event_name }})
+    runs-on: ubuntu-24.04-firewall
+    steps:
+      - name: Probe marker hosts
+        run: |
+          probe() {
+            if curl --fail --silent --show-error --max-time 20 --output /dev/null "https://$1"; then
+              echo "ALLOWED"
+            else
+              echo "BLOCKED"
+            fi
+          }
+          base=$(probe api.github.com)    # only in base policy
+          head=$(probe pypi.org)          # only in head policy
+          never=$(probe example.com)      # in no policy (sanity check)
+          {
+            echo "### Event: ${{ github.event_name }}"
+            echo "- GITHUB_REF: \`$GITHUB_REF\`"
+            echo "- GITHUB_SHA: \`$GITHUB_SHA\`"
+            echo "- base ref: \`${{ github.base_ref }}\`, head ref: \`${{ github.head_ref }}\`"
+            echo ""
+            echo "| Host | Marker for | Result |"
+            echo "|---|---|---|"
+            echo "| api.github.com | base | $base |"
+            echo "| pypi.org | head | $head |"
+            echo "| example.com | none | $never |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
