@@ -210,7 +210,7 @@ Both are easy to revoke.
 | Create, move or delete git tags | **No** | Tag ruleset (see setup). `public_repo` can't be narrowed, so a ruleset is the only lever |
 | Publish GitHub Releases | **No** | Publishing creates a tag (blocked by the ruleset), and gulk-py has no existing tags to attach one to |
 | Create *draft* releases | Yes (accepted). Drafts don't create a tag and are only visible to people with write access | Nothing; GitHub has no setting to block drafts |
-| Push to, merge into or delete `main` | **No** | Ruleset: PR + 1 approval required; authors can't approve their own PRs; Ryan-only bypass |
+| Push to, merge into or delete `main` | **No** | Ruleset: PR + 1 approval required, from a code owner (CODEOWNERS = Ryan only), so rybot's approval doesn't count; approval of the latest push required; Ryan-only bypass |
 | Touch `.github/workflows/` | **No** | No `workflow` scope, so GitHub rejects the push. This closes the path from same-repo branch CI to repo secrets |
 | Repos beyond gulk-py | Any public repo rybot73 can write to | Keep rybot73 a collaborator on gulk-py only |
 | Spend / time | Budget env vars, defaults in USD per run:<br>• **plan** = claude-plan planning step 1 + claude-plan filename step 0.1 + publish pass 0.1 (max 1.2)<br>• **implement / revise** = 1; `timeout-minutes: 60` | Config, plus the provider-side cap |
@@ -269,6 +269,7 @@ allow:
 
 - `.gitmodules` + `tools/claude-scripts`: `git submodule add https://github.com/ryb73/claude-scripts tools/claude-scripts`. Use HTTPS so CI can clone it with no credentials. Bump it with `git submodule update --remote tools/claude-scripts` and a commit.
 - `pyproject.toml` (root): add `exclude = ["tools/*"]` under `[tool.uv.workspace]` **if** uv complains that claude-scripts sits inside the workspace without being a member. Check during implementation.
+- `.github/CODEOWNERS`: `* @ryb73`
 - `.github/egress-firewall.yaml`
 - `.github/workflows/rybot.yml`
 - `.github/workflows/rybot/system.md`
@@ -279,8 +280,10 @@ allow:
 
 1. **Ruleset on `main`:**
    - Require a PR with 1 approving review.
+   - **Require review from Code Owners.** With `.github/CODEOWNERS` set to `* @ryb73`, rybot73's approval can't satisfy the requirement. Rybot has write access, so its approval would otherwise count, and it could approve and merge a PR authored by someone else (for example, Ryan's PR that it was asked to revise). Personal-account repos have no role below write, so a ruleset is the only way to take that power away. GitHub reads CODEOWNERS from the base branch, so a PR can't change who owns the files it touches.
+   - Also enable "Require approval of the most recent reviewable push" and "Dismiss stale pull request approvals when new commits are pushed", so commits rybot pushes after an approval can't ride on it.
    - Block force pushes and deletion.
-   - Only the repository admin can bypass.
+   - Only the repository admin can bypass. This is also how Ryan merges his own PRs, since authors can't approve their own.
 
    **Git-tag ruleset** (required): a second ruleset targeting *tags*, set to all tags (`~ALL`).
    - Enable "Restrict creations", "Restrict updates" and "Restrict deletions". Only the repository admin can bypass.
@@ -324,6 +327,7 @@ allow:
    - A conversation comment without an @-mention on a rybot PR → job skipped.
    - Ask the agent to `curl https://example.com` → blocked in the run summary.
    - Ask it to push to `main` → rejected by the ruleset.
+   - Open a PR as Ryan (or use a throwaway one), push a commit to it as rybot73, then ask rybot to approve and merge it → the approval doesn't satisfy the requirement and the merge is blocked.
    - Ask it to edit a file under `.github/workflows/` and push → rejected for missing `workflow` scope. Test **both** `rybot.yml` **and** a non-YAML file in the subdirectory, e.g. `.github/workflows/rybot/system.md`. Either result is acceptable; note which one happens. If the second push succeeds, prompts aren't tamper-proof, which is accepted as an uncertainty.
    - Ask it to create and push a tag, e.g. `git tag test && git push origin test` → rejected by the tag ruleset.
    - On a rybot PR, ask it to edit `.github/egress-firewall.yaml`. The push succeeds, but the next review on that PR → the egress guard comments its refusal, the job fails at step 1, and no generic failure comment is posted.
