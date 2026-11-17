@@ -1,0 +1,219 @@
+# rybot73: plans, implements, revises and answers on issues and PRs when a
+# trusted user asks. See .github/workflows/rybot/ for the scripts and prompts.
+name: rybot
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  rybot:
+    # A cheap prefilter. route.sh does the exact @-mention matching.
+    if: >-
+      contains(fromJSON(vars.RYBOT_TRUSTED_USERS), github.actor) && (
+        (github.event_name == 'issue_comment' &&
+          github.event.issue.state == 'open' &&
+          contains(github.event.comment.body, '@rybot73')) ||
+        (github.event_name == 'pull_request_review' &&
+          github.event.pull_request.state == 'open' &&
+          github.event.review.state != 'approved' &&
+          (github.event.pull_request.user.login == 'rybot73' ||
+            contains(github.event.review.body, '@rybot73')))
+      )
+    runs-on: ubuntu-24.04-firewall
+    timeout-minutes: 60
+    concurrency:
+      group: rybot-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        # Explicit bash adds -o pipefail.
+        shell: bash
+    # Non-secret values only; secrets are passed to the steps that need them.
+    env:
+      ISSUE_OR_PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+      IS_PR: ${{ github.event_name == 'pull_request_review' || github.event.issue.pull_request != null }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      WORKFLOW_REF_DIR: ${{ github.workspace }}/.rybot-workflow-ref/.github/workflows/rybot
+      CLAUDE_CODE_VERSION: "2.1.311"
+      DISABLE_AUTOUPDATER: "1"
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+      ANTHROPIC_BASE_URL: ${{ vars.ANTHROPIC_BASE_URL }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      CLAUDE_PLAN_FILENAME_MODEL: ${{ vars.CLAUDE_PLAN_FILENAME_MODEL }}
+      # Budgets are always set here, so spend limits never depend on a
+      # dependency's defaults.
+      RYBOT_MAX_BUDGET_USD: ${{ vars.RYBOT_MAX_BUDGET_USD || '1' }}
+      RYBOT_PUBLISH_MAX_BUDGET_USD: ${{ vars.RYBOT_PUBLISH_MAX_BUDGET_USD || '0.1' }}
+      CLAUDE_PLAN_MAX_BUDGET_USD: ${{ vars.CLAUDE_PLAN_MAX_BUDGET_USD || vars.RYBOT_MAX_BUDGET_USD || '1' }}
+      CLAUDE_PLAN_FILENAME_MAX_BUDGET_USD: ${{ vars.CLAUDE_PLAN_FILENAME_MAX_BUDGET_USD || '0.25' }}
+    steps:
+      # The firewall enforces the policy from the workflow's ref, which for
+      # review events is the PR merge ref. Refuse to run under any policy but
+      # the default branch's. This lives here, not in a script, because the
+      # bot's token can't push workflow files.
+      - name: Egress guard
+        id: egress
+        env:
+          GH_TOKEN: ${{ secrets.RYBOT_PAT }}
+          EGRESS_POLICY_FILE: .github/egress-firewall.yaml
+        run: |
+          blob() { gh api "repos/$GITHUB_REPOSITORY/contents/$EGRESS_POLICY_FILE?ref=$1" --jq .sha 2>/dev/null || echo "error:$1"; }
+          [ "$(blob "$GITHUB_SHA")" = "$(blob "$DEFAULT_BRANCH")" ] && exit 0
+          gh issue comment "$ISSUE_OR_PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "rybot won't run: the egress policy for this run (\`$EGRESS_POLICY_FILE\` at the workflow's ref) differs from \`$DEFAULT_BRANCH\`'s, or couldn't be checked. On a PR that changes the policy, comment \`@rybot73 revise …\` in the conversation tab instead; that runs under \`$DEFAULT_BRANCH\`'s policy."
+          exit 1
+
+      - name: Check out rybot scripts (workflow's ref)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: .rybot-workflow-ref
+          sparse-checkout: .github/workflows/rybot
+          persist-credentials: false
+
+      - name: Route
+        id: route
+        env:
+          GH_TOKEN: ${{ secrets.RYBOT_PAT }}
+          EVENT_NAME: ${{ github.event_name }}
+          TRIGGER_BODY: ${{ github.event.comment.body || github.event.review.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: bash "$WORKFLOW_REF_DIR/route.sh"
+
+      - name: Acknowledge
+        id: ack
+        if: steps.route.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.RYBOT_PAT }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          REVIEW_NODE_ID: ${{ github.event.review.node_id }}
+        run: |
+          if [ -n "$REVIEW_NODE_ID" ]; then
+            # Reviews are only reactable through GraphQL.
+            gh api graphql -f query='mutation($id:ID!){addReaction(input:{subjectId:$id,content:EYES}){reaction{id}}}' -f id="$REVIEW_NODE_ID" >/dev/null
+            echo "node_id=$REVIEW_NODE_ID" >>"$GITHUB_OUTPUT"
+          else
+            target="issues/comments/$COMMENT_ID"
+            id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/$target/reactions" -f content=eyes --jq .id)
+            echo "target=$target" >>"$GITHUB_OUTPUT"
+            echo "reaction_id=$id" >>"$GITHUB_OUTPUT"
+          fi
+
+      # Checked out to work/, not the workspace root: checkout empties its
+      # target directory, which would delete .rybot-workflow-ref/.
+      - name: Check out work branch
+        if: steps.route.outputs.skip == 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: work
+          ref: ${{ steps.route.outputs.ref }}
+          submodules: true
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up uv
+        if: steps.route.outputs.skip == 'false'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          working-directory: work
+
+      # No secrets here: this runs third-party install and build code.
+      - name: Install dependencies and Claude Code
+        if: steps.route.outputs.skip == 'false'
+        working-directory: work
+        run: |
+          uv sync --locked --all-packages
+          uv sync --locked --project tools/claude-scripts
+          curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
+
+      - name: Set git identity and commit signing
+        if: steps.route.outputs.skip == 'false'
+        env:
+          SIGNING_KEY: ${{ secrets.RYBOT_SSH_SIGNING_KEY }}
+        run: |
+          git config --global user.name rybot73
+          git config --global user.email 24560570+rybot73@users.noreply.github.com
+
+          key="$RUNNER_TEMP/rybot-signing-key"
+          (umask 077; printf '%s\n' "$SIGNING_KEY" >"$key")
+          ssh-keygen -y -f "$key" >"$key.pub"   # fails fast on a malformed key
+          git config --global gpg.format ssh
+          git config --global user.signingkey "$key"
+          git config --global commit.gpgsign true
+          git config --global tag.gpgsign true
+
+      - name: Gather context
+        if: steps.route.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ steps.route.outputs.mode }}
+          TRUSTED_USERS: ${{ vars.RYBOT_TRUSTED_USERS }}
+          TRIGGER_AUTHOR: ${{ github.actor }}
+          TRIGGER_BODY: ${{ github.event.comment.body || github.event.review.body }}
+        run: |
+          # tee prints the context to the log for reference.
+          bash "$WORKFLOW_REF_DIR/gather-context.sh" | tee "$RUNNER_TEMP/context.md"
+
+      - name: Run agent
+        if: steps.route.outputs.skip == 'false'
+        working-directory: work
+        env:
+          GH_TOKEN: ${{ secrets.RYBOT_PAT }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MODE: ${{ steps.route.outputs.mode }}
+        run: |
+          # An unset repo variable arrives as an empty string.
+          [ -n "$ANTHROPIC_BASE_URL" ] || unset ANTHROPIC_BASE_URL
+          # git asks gh for credentials, and gh reads GH_TOKEN, which only
+          # this step has.
+          gh auth setup-git --hostname github.com
+
+          build_prompt() { bash "$WORKFLOW_REF_DIR/build-prompt.sh" "$1"; }
+          agent() {
+            claude -p --permission-mode bypassPermissions \
+              --append-system-prompt "$(cat "$WORKFLOW_REF_DIR/system.md")" \
+              --disallowedTools WebFetch,WebSearch --max-budget-usd "$1" \
+              --output-format stream-json --verbose
+          }
+
+          case "$MODE" in
+            plan)
+              # Assigned first so a failure here stops the step.
+              plan_prompt=$(build_prompt plan)
+              uv run --no-sync --project tools/claude-scripts \
+                claude-plan --dangerous --pretty "$plan_prompt"
+              build_prompt plan-publish | agent "$RYBOT_PUBLISH_MAX_BUDGET_USD"
+              ;;
+            *)
+              build_prompt "$MODE" | agent "$RYBOT_MAX_BUDGET_USD"
+              ;;
+          esac
+
+      - name: Remove acknowledgement
+        if: always() && (steps.ack.outputs.id != '' || steps.ack.outputs.node_id != '')
+        env:
+          GH_TOKEN: ${{ secrets.RYBOT_PAT }}
+          NODE_ID: ${{ steps.ack.outputs.node_id }}
+          TARGET: ${{ steps.ack.outputs.target }}
+          REACTION_ID: ${{ steps.ack.outputs.reaction_id }}
+        run: |
+          if [ -n "$NODE_ID" ]; then
+            gh api graphql -f query='mutation($id:ID!){removeReaction(input:{subjectId:$id,content:EYES}){reaction{id}}}' -f id="$NODE_ID" >/dev/null || true
+          else
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/$TARGET/reactions/$REACTION_ID" --silent || true
+          fi
+
+      - name: Failure notice
+        if: failure() && steps.egress.outcome != 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.RYBOT_PAT }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue comment "$ISSUE_OR_PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "❌ rybot run failed: $RUN_URL"
