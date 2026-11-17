@@ -197,7 +197,7 @@ jobs:
           esac
 
       - name: Remove acknowledgement
-        if: always() && (steps.ack.outputs.id != '' || steps.ack.outputs.node_id != '')
+        if: always() && (steps.ack.outputs.reaction_id != '' || steps.ack.outputs.node_id != '')
         env:
           GH_TOKEN: ${{ secrets.RYBOT_PAT }}
           NODE_ID: ${{ steps.ack.outputs.node_id }}
