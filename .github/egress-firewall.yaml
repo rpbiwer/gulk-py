@@ -1,0 +1,16 @@
+# Hosts that rybot's jobs (runs-on: ubuntu-24.04-firewall) may reach. Anything
+# else is blocked, apart from GitHub's defaults: github.com,
+# codeload.github.com, *actions.githubusercontent.com, *blob.core.windows.net.
+#
+# rybot refuses to run under any version of this file but the default
+# branch's; see the egress guard in .github/workflows/rybot.yml.
+mode: enforce
+allow:
+  - api.github.com # gh
+  - api.anthropic.com # LLM; swap for the ANTHROPIC_BASE_URL host if using another provider
+  - claude.ai # Claude Code install script
+  - downloads.claude.ai # Claude Code binary
+  - releases.astral.sh # uv download (setup-uv's default mirror)
+  - release-assets.githubusercontent.com # GitHub release downloads
+  - pypi.org # uv sync
+  - files.pythonhosted.org # PyPI downloads
