@@ -159,7 +159,7 @@ if: >-
      - `main` for plan, implement, and answer on an issue.
      - For revise, and answer on a PR, the PR head branch, found with `gh pr view --json headRefName,isCrossRepository`.
    - **Refuse fork PRs** (`isCrossRepository == true`) with a comment, and set `skip=true`.
-4. **Acknowledge.** Add a 👀 reaction: on the comment for `issue_comment`, or on the PR itself for reviews, since reviews don't support reactions.
+4. **Acknowledge.** Add a 👀 reaction: on the comment for `issue_comment` (REST), or on the review for `pull_request_review`. Reviews have no REST reactions endpoint, but `PullRequestReview` is `Reactable` in GraphQL, so use the `addReaction` mutation with the review's `node_id` (`github.event.review.node_id`). Remove it at the end with `removeReaction` on the same subject.
 5. **Work checkout.** `actions/checkout` with:
    - `path: work`
      - Checkout empties its target directory when that isn't already a clone, so checking out to the workspace root would delete `.rybot-workflow-ref/`. Using `path: work` keeps the two checkouts side by side.
