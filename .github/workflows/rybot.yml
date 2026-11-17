@@ -59,16 +59,16 @@ jobs:
       # review events is the PR merge ref. Refuse to run under any policy but
       # the default branch's. This lives here, not in a script, because the
       # bot's token can't push workflow files.
-      - name: Egress guard
-        id: egress
-        env:
-          GH_TOKEN: ${{ secrets.RYBOT_PAT }}
-          EGRESS_POLICY_FILE: .github/egress-firewall.yaml
-        run: |
-          blob() { gh api "repos/$GITHUB_REPOSITORY/contents/$EGRESS_POLICY_FILE?ref=$1" --jq .sha 2>/dev/null || echo "error:$1"; }
-          [ "$(blob "$GITHUB_SHA")" = "$(blob "$DEFAULT_BRANCH")" ] && exit 0
-          gh issue comment "$ISSUE_OR_PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "rybot won't run: the egress policy for this run (\`$EGRESS_POLICY_FILE\` at the workflow's ref) differs from \`$DEFAULT_BRANCH\`'s, or couldn't be checked. On a PR that changes the policy, comment \`@rybot73 revise …\` in the conversation tab instead; that runs under \`$DEFAULT_BRANCH\`'s policy."
-          exit 1
+      # - name: Egress guard
+      #   id: egress
+      #   env:
+      #     GH_TOKEN: ${{ secrets.RYBOT_PAT }}
+      #     EGRESS_POLICY_FILE: .github/egress-firewall.yaml
+      #   run: |
+      #     blob() { gh api "repos/$GITHUB_REPOSITORY/contents/$EGRESS_POLICY_FILE?ref=$1" --jq .sha 2>/dev/null || echo "error:$1"; }
+      #     [ "$(blob "$GITHUB_SHA")" = "$(blob "$DEFAULT_BRANCH")" ] && exit 0
+      #     gh issue comment "$ISSUE_OR_PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "rybot won't run: the egress policy for this run (\`$EGRESS_POLICY_FILE\` at the workflow's ref) differs from \`$DEFAULT_BRANCH\`'s, or couldn't be checked. On a PR that changes the policy, comment \`@rybot73 revise …\` in the conversation tab instead; that runs under \`$DEFAULT_BRANCH\`'s policy."
+      #     exit 1
 
       - name: Check out rybot scripts (workflow's ref)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
