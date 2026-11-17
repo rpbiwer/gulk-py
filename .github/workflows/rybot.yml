@@ -92,16 +92,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RYBOT_PAT }}
           COMMENT_ID: ${{ github.event.comment.id }}
+          REVIEW_NODE_ID: ${{ github.event.review.node_id }}
         run: |
-          # Reviews don't support reactions, so react on the PR itself.
-          if [ -n "$COMMENT_ID" ]; then
-            target="issues/comments/$COMMENT_ID"
+          if [ -n "$REVIEW_NODE_ID" ]; then
+            # Reviews are only reactable through GraphQL.
+            gh api graphql -f query='mutation($id:ID!){addReaction(input:{subjectId:$id,content:EYES}){reaction{id}}}' -f id="$REVIEW_NODE_ID" >/dev/null
+            echo "node_id=$REVIEW_NODE_ID" >>"$GITHUB_OUTPUT"
           else
-            target="issues/$ISSUE_OR_PR_NUMBER"
+            target="issues/comments/$COMMENT_ID"
+            id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/$target/reactions" -f content=eyes --jq .id)
+            echo "target=$target" >>"$GITHUB_OUTPUT"
+            echo "reaction_id=$id" >>"$GITHUB_OUTPUT"
           fi
-          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/$target/reactions" -f content=eyes --jq .id)
-          echo "target=$target" >>"$GITHUB_OUTPUT"
-          echo "id=$id" >>"$GITHUB_OUTPUT"
 
       # Checked out to work/, not the workspace root: checkout empties its
       # target directory, which would delete .rybot-workflow-ref/.
@@ -195,10 +197,18 @@ jobs:
           esac
 
       - name: Remove acknowledgement
-        if: always() && steps.ack.outputs.id != ''
+        if: always() && (steps.ack.outputs.id != '' || steps.ack.outputs.node_id != '')
         env:
           GH_TOKEN: ${{ secrets.RYBOT_PAT }}
-        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/${{ steps.ack.outputs.target }}/reactions/${{ steps.ack.outputs.id }}" --silent || true
+          NODE_ID: ${{ steps.ack.outputs.node_id }}
+          TARGET: ${{ steps.ack.outputs.target }}
+          REACTION_ID: ${{ steps.ack.outputs.reaction_id }}
+        run: |
+          if [ -n "$NODE_ID" ]; then
+            gh api graphql -f query='mutation($id:ID!){removeReaction(input:{subjectId:$id,content:EYES}){reaction{id}}}' -f id="$NODE_ID" >/dev/null || true
+          else
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/$TARGET/reactions/$REACTION_ID" --silent || true
+          fi
 
       - name: Failure notice
         if: failure() && steps.egress.outcome != 'failure'
