@@ -25,3 +25,7 @@ jobs:
       - run: make check
 
       - run: make test
+
+      - name: rybot tests
+        working-directory: ${{ github.workspace }}
+        run: bash .github/workflows/rybot/test-route.sh
