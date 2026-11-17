@@ -25,3 +25,6 @@ jobs:
       - run: make check
 
       - run: make test
+
+      - name: rybot tests
+        run: bash .github/workflows/rybot/test-route.sh
