@@ -68,6 +68,14 @@ expect revise pull_request_review true ryb73 '@rybot73 fix these'
 expect skip pull_request_review true ryb73 'just notes'
 expect skip pull_request_review true ryb73 'cc bot@rybot73.com'
 
+# Issue opening descriptions route like issue comments
+expect plan issues false ryb73 '@rybot73 plan'
+expect implement issues false ryb73 '@rybot73 implement'
+expect answer issues false ryb73 '@rybot73 what is this?'
+expect skip issues false ryb73 'no mention'
+expect skip issues false ryb73 'bot@rybot73.com'
+expect plan issues false ryb73 $'Some details\nmore details\n@rybot73 plan'
+
 if [ "$failures" -gt 0 ]; then
 	echo "$failures failure(s)"
 	exit 1

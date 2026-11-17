@@ -7,6 +7,8 @@ on:
     types: [created]
   pull_request_review:
     types: [submitted]
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
@@ -21,6 +23,8 @@ jobs:
         (github.event_name == 'issue_comment' &&
           github.event.issue.state == 'open' &&
           contains(github.event.comment.body, '@rybot73')) ||
+        (github.event_name == 'issues' &&
+          contains(github.event.issue.body, '@rybot73')) ||
         (github.event_name == 'pull_request_review' &&
           github.event.pull_request.state == 'open' &&
           github.event.review.state != 'approved' &&
@@ -82,7 +86,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RYBOT_PAT }}
           EVENT_NAME: ${{ github.event_name }}
-          TRIGGER_BODY: ${{ github.event.comment.body || github.event.review.body }}
+          TRIGGER_BODY: ${{ github.event.comment.body || github.event.review.body || github.event.issue.body }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: bash "$WORKFLOW_REF_DIR/route.sh"
 
@@ -99,7 +103,11 @@ jobs:
             gh api graphql -f query='mutation($id:ID!){addReaction(input:{subjectId:$id,content:EYES}){reaction{id}}}' -f id="$REVIEW_NODE_ID" >/dev/null
             echo "node_id=$REVIEW_NODE_ID" >>"$GITHUB_OUTPUT"
           else
-            target="issues/comments/$COMMENT_ID"
+            if [ -n "$COMMENT_ID" ]; then
+              target="issues/comments/$COMMENT_ID"
+            else
+              target="issues/$ISSUE_OR_PR_NUMBER"
+            fi
             id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/$target/reactions" -f content=eyes --jq .id)
             echo "target=$target" >>"$GITHUB_OUTPUT"
             echo "reaction_id=$id" >>"$GITHUB_OUTPUT"
@@ -156,7 +164,7 @@ jobs:
           MODE: ${{ steps.route.outputs.mode }}
           TRUSTED_USERS: ${{ vars.RYBOT_TRUSTED_USERS }}
           TRIGGER_AUTHOR: ${{ github.actor }}
-          TRIGGER_BODY: ${{ github.event.comment.body || github.event.review.body }}
+          TRIGGER_BODY: ${{ github.event.comment.body || github.event.review.body || github.event.issue.body }}
         run: |
           # tee prints the context to the log for reference.
           bash "$WORKFLOW_REF_DIR/gather-context.sh" | tee "$RUNNER_TEMP/context.md"
