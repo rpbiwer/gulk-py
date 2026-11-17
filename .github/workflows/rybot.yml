@@ -87,6 +87,7 @@ jobs:
         run: bash "$WORKFLOW_REF_DIR/route.sh"
 
       - name: Acknowledge
+        id: ack
         if: steps.route.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ secrets.RYBOT_PAT }}
@@ -98,7 +99,9 @@ jobs:
           else
             target="issues/$ISSUE_OR_PR_NUMBER"
           fi
-          gh api -X POST "repos/$GITHUB_REPOSITORY/$target/reactions" -f content=eyes --silent
+          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/$target/reactions" -f content=eyes --jq .id)
+          echo "target=$target" >>"$GITHUB_OUTPUT"
+          echo "id=$id" >>"$GITHUB_OUTPUT"
 
       # Checked out to work/, not the workspace root: checkout empties its
       # target directory, which would delete .rybot-workflow-ref/.
@@ -190,6 +193,12 @@ jobs:
               build_prompt "$MODE" | agent "$RYBOT_MAX_BUDGET_USD"
               ;;
           esac
+
+      - name: Remove acknowledgement
+        if: always() && steps.ack.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ secrets.RYBOT_PAT }}
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/${{ steps.ack.outputs.target }}/reactions/${{ steps.ack.outputs.id }}" --silent || true
 
       - name: Failure notice
         if: failure() && steps.egress.outcome != 'failure'
