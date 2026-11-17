@@ -128,11 +128,21 @@ jobs:
           curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"
           echo "$HOME/.local/bin" >>"$GITHUB_PATH"
 
-      - name: Set git identity
+      - name: Set git identity and commit signing
         if: steps.route.outputs.skip == 'false'
+        env:
+          SIGNING_KEY: ${{ secrets.RYBOT_SSH_SIGNING_KEY }}
         run: |
           git config --global user.name rybot73
           git config --global user.email 24560570+rybot73@users.noreply.github.com
+
+          key="$RUNNER_TEMP/rybot-signing-key"
+          (umask 077; printf '%s\n' "$SIGNING_KEY" >"$key")
+          ssh-keygen -y -f "$key" >"$key.pub"   # fails fast on a malformed key
+          git config --global gpg.format ssh
+          git config --global user.signingkey "$key"
+          git config --global commit.gpgsign true
+          git config --global tag.gpgsign true
 
       - name: Gather context
         if: steps.route.outputs.skip == 'false'
