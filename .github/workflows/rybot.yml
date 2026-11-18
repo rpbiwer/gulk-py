@@ -100,6 +100,7 @@ jobs:
         run: |
           if [ -n "$REVIEW_NODE_ID" ]; then
             # Reviews are only reactable through GraphQL.
+            # shellcheck disable=SC2016 # $id is a GraphQL variable, not shell
             gh api graphql -f query='mutation($id:ID!){addReaction(input:{subjectId:$id,content:EYES}){reaction{id}}}' -f id="$REVIEW_NODE_ID" >/dev/null
             echo "node_id=$REVIEW_NODE_ID" >>"$GITHUB_OUTPUT"
           else
@@ -213,6 +214,7 @@ jobs:
           REACTION_ID: ${{ steps.ack.outputs.reaction_id }}
         run: |
           if [ -n "$NODE_ID" ]; then
+            # shellcheck disable=SC2016 # $id is a GraphQL variable, not shell
             gh api graphql -f query='mutation($id:ID!){removeReaction(input:{subjectId:$id,content:EYES}){reaction{id}}}' -f id="$NODE_ID" >/dev/null || true
           else
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/$TARGET/reactions/$REACTION_ID" --silent || true
