@@ -16,6 +16,29 @@ jobs:
         with:
           persist-credentials: false
 
+      # Update the version and sha256 together; Dependabot doesn't track this.
+      - name: Install actionlint
+        working-directory: ${{ github.workspace }}
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$tarball"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/actionlint" actionlint
+          echo "$RUNNER_TEMP/actionlint" >>"$GITHUB_PATH"
+
+      - name: shellcheck
+        working-directory: ${{ github.workspace }}
+        run: git ls-files -z '*.sh' | xargs -0 shellcheck
+
+      # Also runs shellcheck on inline run: blocks.
+      - name: actionlint
+        working-directory: ${{ github.workspace }}
+        run: actionlint
+
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
