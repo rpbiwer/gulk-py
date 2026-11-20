@@ -51,6 +51,7 @@ jobs:
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
       ANTHROPIC_BASE_URL: ${{ vars.ANTHROPIC_BASE_URL }}
       ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ vars.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
       CLAUDE_PLAN_FILENAME_MODEL: ${{ vars.CLAUDE_PLAN_FILENAME_MODEL }}
       # Budgets are always set here, so spend limits never depend on a
       # dependency's defaults.
@@ -180,6 +181,7 @@ jobs:
         run: |
           # An unset repo variable arrives as an empty string.
           [ -n "$ANTHROPIC_BASE_URL" ] || unset ANTHROPIC_BASE_URL
+          [ -n "$ANTHROPIC_DEFAULT_HAIKU_MODEL" ] || unset ANTHROPIC_DEFAULT_HAIKU_MODEL
           # git asks gh for credentials, and gh reads GH_TOKEN, which only
           # this step has.
           gh auth setup-git --hostname github.com
