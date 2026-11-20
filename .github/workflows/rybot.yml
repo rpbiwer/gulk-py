@@ -177,9 +177,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RYBOT_PAT }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
           MODE: ${{ steps.route.outputs.mode }}
         run: |
           # An unset repo variable arrives as an empty string.
+          [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
+          [ -n "$ANTHROPIC_AUTH_TOKEN" ] || unset ANTHROPIC_AUTH_TOKEN
           [ -n "$ANTHROPIC_BASE_URL" ] || unset ANTHROPIC_BASE_URL
           [ -n "$ANTHROPIC_DEFAULT_HAIKU_MODEL" ] || unset ANTHROPIC_DEFAULT_HAIKU_MODEL
           # git asks gh for credentials, and gh reads GH_TOKEN, which only
