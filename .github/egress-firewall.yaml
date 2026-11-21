@@ -7,8 +7,8 @@
 mode: enforce
 allow:
   - api.github.com # gh
-  # - api.anthropic.com # LLM; swap for the ANTHROPIC_BASE_URL host if using another provider
-  - inference.api.nscale.com # LLM (ANTHROPIC_BASE_URL host); swap back to api.anthropic.com for Anthropic
+  - api.anthropic.com # LLM; swap for the ANTHROPIC_BASE_URL host if using another provider
+  # - inference.api.nscale.com # LLM (ANTHROPIC_BASE_URL host); swap back to api.anthropic.com for Anthropic
   - claude.ai # Claude Code install script
   - downloads.claude.ai # Claude Code binary
   - releases.astral.sh # uv download (setup-uv's default mirror)
