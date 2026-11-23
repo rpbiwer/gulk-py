@@ -68,9 +68,7 @@ def get_legal_cards(hand_state: HandState, player: PlayerId) -> list[Card]:
         return list(hand)
 
     return [
-        card
-        for card in hand
-        if isinstance(card, Joker) or card.suit == lead_card.suit
+        card for card in hand if isinstance(card, Joker) or card.suit == lead_card.suit
     ]
 
 
