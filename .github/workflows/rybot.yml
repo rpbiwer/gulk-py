@@ -51,6 +51,7 @@ jobs:
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
       ANTHROPIC_BASE_URL: ${{ vars.ANTHROPIC_BASE_URL }}
       ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ vars.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
       CLAUDE_PLAN_FILENAME_MODEL: ${{ vars.CLAUDE_PLAN_FILENAME_MODEL }}
       # Budgets are always set here, so spend limits never depend on a
       # dependency's defaults.
@@ -170,16 +171,79 @@ jobs:
           # tee prints the context to the log for reference.
           bash "$WORKFLOW_REF_DIR/gather-context.sh" | tee "$RUNNER_TEMP/context.md"
 
+      # Claude Code only speaks the Anthropic Messages API. For a provider that
+      # only offers an OpenAI-style chat completions API (e.g. nscale), run a
+      # local LiteLLM proxy that translates. Skipped unless the
+      # RYBOT_PROXY_UPSTREAM_URL repo variable is set. The upstream key stays in
+      # this step; Claude Code gets a random per-run key for the local proxy.
+      - name: Start LLM proxy
+        if: steps.route.outputs.skip == 'false' && vars.RYBOT_PROXY_UPSTREAM_URL != ''
+        env:
+          UPSTREAM_URL: ${{ vars.RYBOT_PROXY_UPSTREAM_URL }}
+          UPSTREAM_API_KEY: ${{ secrets.RYBOT_PROXY_UPSTREAM_API_KEY }}
+          # Exact pin, plus a date cap so transitive dependencies can't float
+          # to releases newer than the pin was vetted against.
+          LITELLM_VERSION: "1.109.1"
+          LITELLM_EXCLUDE_NEWER: "2026-11-14T00:00:00Z"
+        run: |
+          proxy_key="sk-$(openssl rand -hex 32)"
+          echo "::add-mask::$proxy_key"
+
+          # Model names are passed through to the upstream unchanged.
+          # hosted_vllm/ uses /v1/chat/completions; openai/ would call
+          # /v1/responses.
+          cat >"$RUNNER_TEMP/litellm.yaml" <<EOF
+          model_list:
+            - model_name: "*"
+              litellm_params:
+                model: hosted_vllm/*
+                api_base: ${UPSTREAM_URL}
+                api_key: os.environ/UPSTREAM_API_KEY
+          EOF
+
+          LITELLM_MASTER_KEY="$proxy_key" \
+          LITELLM_LOCAL_MODEL_COST_MAP=True \
+          LITELLM_TELEMETRY=False \
+          uv tool run --exclude-newer "$LITELLM_EXCLUDE_NEWER" \
+            --from "litellm[proxy]==$LITELLM_VERSION" \
+            litellm --config "$RUNNER_TEMP/litellm.yaml" --host 127.0.0.1 --port 4000 \
+            >"$RUNNER_TEMP/litellm.log" 2>&1 &
+
+          ready=
+          for _ in $(seq 1 90); do
+            if curl -fsS -o /dev/null http://127.0.0.1:4000/health/liveliness; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "$ready" ]; then
+            cat "$RUNNER_TEMP/litellm.log"
+            echo "::error::LLM proxy did not become ready"
+            exit 1
+          fi
+
+          # Later steps pick these up. Step-level env in "Run agent" falls back
+          # to them when the matching secrets are unset.
+          {
+            echo "ANTHROPIC_BASE_URL=http://127.0.0.1:4000"
+            echo "ANTHROPIC_AUTH_TOKEN=$proxy_key"
+          } >>"$GITHUB_ENV"
+
       - name: Run agent
         if: steps.route.outputs.skip == 'false'
         working-directory: work
         env:
           GH_TOKEN: ${{ secrets.RYBOT_PAT }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_AUTH_TOKEN }}
           MODE: ${{ steps.route.outputs.mode }}
         run: |
           # An unset repo variable arrives as an empty string.
+          [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
+          [ -n "$ANTHROPIC_AUTH_TOKEN" ] || unset ANTHROPIC_AUTH_TOKEN
           [ -n "$ANTHROPIC_BASE_URL" ] || unset ANTHROPIC_BASE_URL
+          [ -n "$ANTHROPIC_DEFAULT_HAIKU_MODEL" ] || unset ANTHROPIC_DEFAULT_HAIKU_MODEL
           # git asks gh for credentials, and gh reads GH_TOKEN, which only
           # this step has.
           gh auth setup-git --hostname github.com
