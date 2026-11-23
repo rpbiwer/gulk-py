@@ -13,6 +13,12 @@ Out of scope here (these are step 2 in the plan doc): wiring `get_legal_cards` i
 integration test over to the new module. Leave both untouched so the golden-file integration
 test is unaffected by the new functions.
 
+Step 2 consequence: `get_legal_cards` always allows Jokers, which `random_game.legal_cards`
+doesn't (see below). When step 2 moves `random_game.py` and the integration test over to the
+new module, random play can pick a Joker where it couldn't before. Expect the golden file to
+change then and regenerate it. This contradicts the "passes unchanged" line in
+`playable-ui.md`, which step 2 should update.
+
 
 ## Key finding: dealer is not recorded in state
 
@@ -54,10 +60,19 @@ config and/or the current `HandState`), not the full `GameState`. Callers pass
   - Does NOT account for `RoundDef.forced_bid` (issue specifies the full range; forced bids stay
     a caller concern in `random_game.py`/server for now). Mention in docstring.
 - `get_legal_cards(hand_state: HandState, player: PlayerId) -> list[Card]`
-  - Port of `random_game.legal_cards`: empty trick -> whole hand; led card is a `Joker` -> whole
-    hand; else cards matching the led suit if any, otherwise whole hand. Read hand from
-    `hand_state.player_hands[player]`, trick from `current_trick`. Return a new list
-    (don't alias the hand). Keep the docstring note that a led Joker imposes no suit.
+  - Based on `random_game.legal_cards`, with one deliberate change: **Jokers are always
+    legal**. A Joker can be played at any time, whether or not the player could follow suit.
+    Rules: empty trick -> whole hand; led card is a `Joker` -> whole hand; else if the player
+    holds any card of the led suit -> those cards **plus every Joker in hand**; otherwise
+    whole hand. Read hand from `hand_state.player_hands[player]`, trick from
+    `current_trick`. Return a new list in hand order (don't alias the hand). The docstring
+    says that a led Joker imposes no suit and that Jokers are exempt from follow-suit.
+  - Existing behaviour contradicts this. `random_game.legal_cards` keeps only `SuitedCard`s
+    of the led suit, so a player who can follow suit is never offered their Jokers. Nothing
+    else enforces follow-suit (`apply_event.py:68` is still a TODO), so the script is the
+    only place affected. This looks like a side effect of the `isinstance` filter, not an
+    intended rule. `determine_trick_winner` already handles a Joker played anywhere in a
+    trick (it wins outright), so no other code needs to change.
   - Does not check whether it's `player`'s turn (callers pair it with `get_next_actor`).
 - `get_next_actor(config: GameConfig, hand_state: HandState, hand_index: int) -> PlayerId`
   - Dealer from `get_dealer_id(config, hand_index)`.
@@ -78,9 +93,9 @@ Match `test_apply_event.py` style: hand-built `GameState`/`HandState`, `make_pla
   forbidden value; last bidder where forbidden value is out of range (sum of bids already >
   cards_dealt) gets the full range; all-bid -> raises `ValueError`; 1-card hand edge case.
 - `get_legal_cards`: empty trick -> full hand; follow suit when holding the led suit; void in
-  led suit -> full hand; led Joker -> full hand; Joker in hand while following suit is not
-  offered (Jokers aren't `SuitedCard`; matches ported behaviour); returned list isn't the hand
-  object.
+  led suit -> full hand; led Joker -> full hand; Joker in hand while able to follow suit is
+  offered alongside the led-suit cards (and off-suit cards are not); returned list isn't the
+  hand object.
 - `get_next_actor`: first bidder is after
   dealer (including dealer wrap-around, e.g. dealer = last seat); last bidder is the dealer;
   first leader after dealer; mid-trick follows seat order with wrap-around; next trick led by
