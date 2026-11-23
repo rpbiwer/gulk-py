@@ -77,7 +77,7 @@ The issue refers to a `gulk_lib_deferred_event_serialization` memory. I couldn't
 - Modify: `packages/gulk-lib/src/gulk_lib/cards.py`, `packages/gulk-lib/src/gulk_lib/events.py`, `packages/gulk-lib/pyproject.toml` (via `uv add`) and `uv.lock`.
 - Regenerate: `packages/gulk-lib/tests/integration/__inline_snapshot__/*/*.txt`.
 - New: `packages/gulk-lib/src/gulk_lib/codec.py` and `packages/gulk-lib/tests/test_codec.py`.
-- No changes to `game_state.py`, `game_config.py`, `player_id.py`, `apply_event.py` or `scripts/random_game.py`. This also avoids merge conflicts with issues #2 and #3, which touch `apply_event.py` and `random_game.py`.
+- No changes to `game_state.py`, `game_config.py`, `game_rounds.py`, `scoring.py`, `player_id.py`, `apply_event.py` or `scripts/random_game.py`. This also avoids merge conflicts with issues #2 and #3, which touch `apply_event.py` and `random_game.py`.
 
 ## Verification
 
@@ -85,7 +85,7 @@ Run these from `packages/gulk-lib`:
 
 1. `make check` runs `pyrefly`, `ruff` and `pyright`. Struct field types and the codec must pass strict mode.
 2. `make test` runs the full suite. It must show:
-   - `test_apply_event.py` and `test_determine_trick_winner.py` pass unchanged, which confirms that positional construction, `match` patterns, equality and `deepcopy` still work on Structs.
+   - `test_apply_event.py`, `test_determine_trick_winner.py` and `test_scoring.py` pass unchanged, which confirms that positional construction, `match` patterns, equality and `deepcopy` still work on Structs.
    - The integration tests pass against the regenerated golden files.
    - The new `test_codec.py` passes.
 3. The whitespace-insensitive golden-file diff from step 5 is empty.
