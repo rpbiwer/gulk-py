@@ -1,6 +1,6 @@
 from gulk_lib.cards import Card, Joker, SuitedCard
 from gulk_lib.game_config import GameConfig
-from gulk_lib.game_state import HandState
+from gulk_lib.game_state import HandState, Trick
 from gulk_lib.player_id import PlayerId
 
 
@@ -42,34 +42,32 @@ def get_legal_bids(config: GameConfig, hand_state: HandState) -> list[int]:
     return bids
 
 
-def get_legal_cards(hand_state: HandState, player: PlayerId) -> list[Card]:
-    """Cards from `player`'s hand that are legal to play into the current trick.
+def get_legal_cards(hand: list[Card], current_trick: Trick) -> list[Card]:
+    """Cards from `hand` that are legal to play into `current_trick`.
 
     Players must follow the led suit when they can. A led Joker has no suit, so it
     imposes no follow-suit constraint. Jokers are exempt from follow-suit: they may
     be played at any time.
 
-    Doesn't check whether it's `player`'s turn; pair with `get_next_actor`.
+    Doesn't check whether it's the hand's owner's turn; pair with `get_next_actor`.
     """
-    hand = hand_state.player_hands[player]
-    current_trick = hand_state.current_trick
-
     if len(current_trick) == 0:
         return list(hand)
 
     _, lead_card = current_trick[0]
-    if isinstance(lead_card, Joker):
-        return list(hand)
+    match lead_card:
+        case Joker():
+            return list(hand)
+        case SuitedCard(suit=lead_suit):
+            pass
 
     can_follow_suit = any(
-        isinstance(card, SuitedCard) and card.suit == lead_card.suit for card in hand
+        isinstance(card, SuitedCard) and card.suit == lead_suit for card in hand
     )
     if not can_follow_suit:
         return list(hand)
 
-    return [
-        card for card in hand if isinstance(card, Joker) or card.suit == lead_card.suit
-    ]
+    return [card for card in hand if isinstance(card, Joker) or card.suit == lead_suit]
 
 
 def get_next_actor(

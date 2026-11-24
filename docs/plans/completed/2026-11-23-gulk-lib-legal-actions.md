@@ -59,7 +59,7 @@ config and/or the current `HandState`), not the full `GameState`. Callers pass
     `apply_event.py:51-60`.
   - Does NOT account for `RoundDef.forced_bid` (issue specifies the full range; forced bids stay
     a caller concern in `random_game.py`/server for now). Mention in docstring.
-- `get_legal_cards(hand_state: HandState, player: PlayerId) -> list[Card]`
+- `get_legal_cards(hand: list[Card], current_trick: Trick) -> list[Card]`
   - Based on `random_game.legal_cards`, with one deliberate change: **Jokers are always
     legal**. A Joker can be played at any time, whether or not the player could follow suit.
     Rules: empty trick -> whole hand; led card is a `Joker` -> whole hand; else if the player
